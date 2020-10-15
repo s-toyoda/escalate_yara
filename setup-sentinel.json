@@ -52,7 +52,7 @@
             }
         },
         "samplePython2RunbookName": {
-            "defaultValue": "isolate-and-scaleout",
+            "defaultValue": "escalate_yara",
             "type": "String"
         },
         "samplePython2RunbookDescription": {
@@ -60,7 +60,7 @@
             "type": "String"
         },
         "_artifactsLocation": {
-            "defaultValue": "https://raw.githubusercontent.com/s-toyoda/isolate-and-scaleout/master/",
+            "defaultValue": "https://raw.githubusercontent.com/s-toyoda/escalate_yara/master/",
             "type": "String",
             "metadata": {
                 "description": "URI to artifacts location"
@@ -74,7 +74,7 @@
             }
         },
         "PlaybookName": {
-            "defaultValue": "isolate-and-scaleout",
+            "defaultValue": "escalate_yara",
             "type": "String"
         },
         "UserName": {
@@ -89,7 +89,7 @@
     "variables": {
         "AzureSentinelConnectionName": "[concat('azuresentinel-', parameters('PlaybookName'))]",
         "AzureAutomationConnectionName": "[concat('azureautomation-', parameters('PlaybookName'))]",
-        "RunBookName": "isolate-and-scaleout"
+        "RunBookName": "escalate_yara"
     },
     "resources": [
         {
@@ -136,7 +136,7 @@
                         "logVerbose": "false",
                         "description": "[parameters('samplePython2RunbookDescription')]",
                         "publishContentLink": {
-                            "uri": "[uri(parameters('_artifactsLocation'), concat('isolate-and-scaleout.py', parameters('_artifactsLocationSasToken')))]",
+                            "uri": "[uri(parameters('_artifactsLocation'), concat('escalate_yara.py', parameters('_artifactsLocationSasToken')))]",
                             "version": "1.0.0.0"
                         }
                     }
@@ -220,7 +220,7 @@
                         }
                     },
                     "actions": {
-                        "Alert_-_Get_hosts": {
+                        "Alert_-_Get_accounts": {
                             "runAfter": {},
                             "type": "ApiConnection",
                             "inputs": {
@@ -235,7 +235,7 @@
                             }
                         },
                         "For_each": {
-                            "foreach": "@body('Alert_-_Get_hosts')?['Hosts']",
+                            "foreach": "@body('Alert_-_Get_accounts')?['Accounts']",
                             "actions": {
                                 "Create_job": {
                                     "runAfter": {},
@@ -243,7 +243,7 @@
                                     "inputs": {
                                         "body": {
                                             "properties": {
-                                                "parameters": "@items('For_each')?['Hosts']"
+                                                "parameters": "@items('For_each')?['Accounts']"
                                             }
                                         },
                                         "host": {
@@ -262,7 +262,7 @@
                                 }
                             },
                             "runAfter": {
-                                "Alert_-_Get_hosts": [
+                                "Alert_-_Get_accounts": [
                                     "Succeeded"
                                 ]
                             },
