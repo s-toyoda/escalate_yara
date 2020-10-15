@@ -1,0 +1,293 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspaceName": {
+            "type": "String",
+            "metadata": {
+                "description": "Workspace name"
+            }
+        },
+        "sku": {
+            "defaultValue": "pergb2018",
+            "allowedValues": [
+                "pergb2018",
+                "Free",
+                "Standalone",
+                "PerNode",
+                "Standard",
+                "Premium"
+            ],
+            "type": "String",
+            "metadata": {
+                "description": "Pricing tier: perGB2018 or legacy tiers (Free, Standalone, PerNode, Standard or Premium), which are not available to all customers."
+            }
+        },
+        "dataRetention": {
+            "defaultValue": 30,
+            "minValue": 7,
+            "maxValue": 730,
+            "type": "Int",
+            "metadata": {
+                "description": "Number of days to retain data."
+            }
+        },
+        "location": {
+            "defaultValue": "[resourceGroup().location]",
+            "type": "String",
+            "metadata": {
+                "description": "Specifies the location in which to create the workspace."
+            }
+        },
+        "automationAccountName": {
+            "type": "String",
+            "metadata": {
+                "description": "Automation account name"
+            }
+        },
+        "automationAccountLocation": {
+            "type": "String",
+            "metadata": {
+                "description": "Specifies the location in which to create the Automation account."
+            }
+        },
+        "samplePython2RunbookName": {
+            "defaultValue": "isolate-and-scaleout",
+            "type": "String"
+        },
+        "samplePython2RunbookDescription": {
+            "defaultValue": "An example runbook that gets all the Resource Manager resources by using the Run As account (service principal).",
+            "type": "String"
+        },
+        "_artifactsLocation": {
+            "defaultValue": "https://raw.githubusercontent.com/s-toyoda/isolate-and-scaleout/master/",
+            "type": "String",
+            "metadata": {
+                "description": "URI to artifacts location"
+            }
+        },
+        "_artifactsLocationSasToken": {
+            "defaultValue": "",
+            "type": "SecureString",
+            "metadata": {
+                "description": "The sasToken required to access _artifactsLocation.  When the template is deployed using the accompanying scripts, a sasToken will be automatically generated"
+            }
+        },
+        "PlaybookName": {
+            "defaultValue": "isolate-and-scaleout",
+            "type": "String"
+        },
+        "UserName": {
+            "defaultValue": "<username>@<domain>",
+            "type": "String"
+        },
+        "AutomationAccount": {
+            "defaultValue": "ds2sentinel-auto3",
+            "type": "String"
+        }
+    },
+    "variables": {
+        "AzureSentinelConnectionName": "[concat('azuresentinel-', parameters('PlaybookName'))]",
+        "AzureAutomationConnectionName": "[concat('azureautomation-', parameters('PlaybookName'))]",
+        "RunBookName": "isolate-and-scaleout"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2020-08-01",
+            "name": "[parameters('workspaceName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "sku": {
+                    "name": "[parameters('sku')]"
+                },
+                "retentionInDays": "[parameters('dataRetention')]",
+                "features": {
+                    "searchVersion": 1,
+                    "legacy": 0
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Automation/automationAccounts",
+            "apiVersion": "2020-01-13-preview",
+            "name": "[parameters('automationAccountName')]",
+            "location": "[parameters('automationAccountLocation')]",
+            "dependsOn": [
+                "[parameters('workspaceName')]"
+            ],
+            "properties": {
+                "sku": {
+                    "name": "Basic"
+                }
+            },
+            "resources": [
+                {
+                    "type": "runbooks",
+                    "apiVersion": "2018-06-30",
+                    "name": "[parameters('samplePython2RunbookName')]",
+                    "location": "[parameters('automationAccountLocation')]",
+                    "dependsOn": [
+                        "[parameters('automationAccountName')]"
+                    ],
+                    "properties": {
+                        "runbookType": "Python2",
+                        "logProgress": "false",
+                        "logVerbose": "false",
+                        "description": "[parameters('samplePython2RunbookDescription')]",
+                        "publishContentLink": {
+                            "uri": "[uri(parameters('_artifactsLocation'), concat('isolate-and-scaleout.py', parameters('_artifactsLocationSasToken')))]",
+                            "version": "1.0.0.0"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces/linkedServices",
+            "apiVersion": "2020-08-01",
+            "name": "[concat(parameters('workspaceName'), '/' , 'Automation')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[parameters('workspaceName')]",
+                "[parameters('automationAccountName')]"
+            ],
+            "properties": {
+                "resourceId": "[resourceId('Microsoft.Automation/automationAccounts', parameters('automationAccountName'))]"
+            }
+        },
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[variables('AzureSentinelConnectionName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "displayName": "[parameters('UserName')]",
+                "customParameterValues": {},
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[variables('AzureAutomationConnectionName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "displayName": "[parameters('UserName')]",
+                "customParameterValues": {},
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureautomation')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('PlaybookName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections', variables('AzureSentinelConnectionName'))]",
+                "[resourceId('Microsoft.Web/connections', variables('AzureAutomationConnectionName'))]",
+                "[concat('Microsoft.Automation/automationAccounts/', parameters('AutomationAccount'), '/runbooks/', variables('RunBookName'))]"
+            ],
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "When_a_response_to_an_Azure_Sentinel_alert_is_triggered": {
+                            "type": "ApiConnectionWebhook",
+                            "inputs": {
+                                "body": {
+                                    "callback_url": "@{listCallbackUrl()}"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "path": "/subscribe"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Alert_-_Get_hosts": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "body": "@triggerBody()?['Entities']",
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/entities"
+                            }
+                        },
+                        "For_each": {
+                            "foreach": "@body('Alert_-_Get_hosts')?['Hosts']",
+                            "actions": {
+                                "Create_job": {
+                                    "runAfter": {},
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "body": {
+                                            "properties": {
+                                                "parameters": "@items('For_each')?['Hosts']"
+                                            }
+                                        },
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['azureautomation']['connectionId']"
+                                            }
+                                        },
+                                        "method": "put",
+                                        "path": "/subscriptions/@{encodeURIComponent(subscription().subscriptionId)}/resourceGroups/@{encodeURIComponent(resourceGroup().name)}/providers/Microsoft.Automation/automationAccounts/@{encodeURIComponent(parameters('automationAccountName'))}/jobs",
+                                        "queries": {
+                                            "runbookName": "[variables('RunBookName')]",
+                                            "wait": false,
+                                            "x-ms-api-version": "2015-10-31"
+                                        }
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Alert_-_Get_hosts": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Foreach"
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "azuresentinel": {
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('AzureSentinelConnectionName'))]",
+                                "connectionName": "[variables('AzureSentinelConnectionName')]",
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+                            },
+                            "azureautomation": {
+                                "connectionId": "[resourceId('Microsoft.Web/connections', variables('AzureAutomationConnectionName'))]",
+                                "connectionName": "[variables('AzureAutomationConnectionName')]",
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureautomation')]"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
